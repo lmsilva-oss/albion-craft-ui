@@ -1,0 +1,3 @@
+ao-data-api:
+  itemsJSON: https://raw.githubusercontent.com/broderickhyman/ao-bin-dumps/master/formatted/items.json
+  host: https://www.albion-online-data.com
