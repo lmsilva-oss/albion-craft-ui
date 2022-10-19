@@ -15,12 +15,44 @@ def new_shopcategory(shopCategory):
         'count': len(shopCategory['shopsubcategory'])
     }
 
-def new_item(id, tier, category):
+def new_item(split_id):
+    tier = int(split_id[0][1])
+
+    if split_id[1][-2] == "@":
+        category = split_id[1][:-2]
+    else:
+        category = split_id[1]
+
+    enchantment = ""
+    if len(split_id[-1]) >= 3 and split_id[-1][-2] == "@":
+        enchantment = split_id[-1][-1:]
+
+        if len(split_id[-1]) == 3:
+            split_id.pop()
+        else:
+            old = split_id.pop()
+            split_id.append(old[:-2])
+    
+    leftovers = split_id[2:]
+
+    subcategory = ""
+    if len(leftovers) >= 1:
+        subcategory = split_id[2]
+    
+    if len(split_id) > 3:
+        leftovers = split_id[3:]
+
     return {
-        "id": id,
         "tier": tier,
+        "enchantment": enchantment,
         "category": category,
+        "subcategory": subcategory,
+        "leftovers": leftovers,
+        "original": split_id,
     }
+
+def get_shop_category(shop_categories, split_id):
+    return ""
 
 def is_tiered(split_id):
     return len(split_id[0]) == 2 and split_id[0][0] == "T" and split_id[0][1].isnumeric()
@@ -48,17 +80,10 @@ with open('i18n.json', 'r', encoding='utf-8') as json_file:
 
 items = []
 for item in i18n_json_dict:
-    id = item['UniqueName']
-    split_id = id.split('_')
+    split_id = item['UniqueName'].split('_')
         
     if is_tiered(split_id):
-        tier = int(split_id[0][1])
-
-        if split_id[1][-2] == "@":
-            category = split_id[1][:-2]
-        else:
-            category = split_id[1]
-
-        items.append(new_item(id, tier, category))
+        inferred_category = get_shop_category(shop_categories, split_id)
+        items.append(new_item(split_id))
 
 write_csv('items.csv', items)
