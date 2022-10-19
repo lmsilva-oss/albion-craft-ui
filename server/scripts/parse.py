@@ -15,23 +15,33 @@ def new_shopcategory(shopCategory):
         'count': len(shopCategory['shopsubcategory'])
     }
 
+def _item(tier, enchantment, category, subcategory, leftovers, split_id):
+    return {
+        "tier": int(tier),
+        "enchantment": enchantment,
+        "category": category,
+        "subcategory": subcategory,
+        "leftovers": leftovers,
+        "split_id": split_id,
+    }
+
 def new_item(split_id):
-    tier = int(split_id[0][1])
+    tier = split_id[0][1]
 
     if split_id[1][-2] == "@":
         category = split_id[1][:-2]
     else:
         category = split_id[1]
 
+    if category == "2H":
+        category = category + "_" + split_id[2]
+
+    if category == "2H_TOOL":
+        category = "TOOL"
+
     enchantment = ""
     if len(split_id[-1]) >= 3 and split_id[-1][-2] == "@":
         enchantment = split_id[-1][-1:]
-
-        if len(split_id[-1]) == 3:
-            split_id.pop()
-        else:
-            old = split_id.pop()
-            split_id.append(old[:-2])
     
     leftovers = split_id[2:]
 
@@ -42,14 +52,13 @@ def new_item(split_id):
     if len(split_id) > 3:
         leftovers = split_id[3:]
 
-    return {
-        "tier": tier,
-        "enchantment": enchantment,
-        "category": category,
-        "subcategory": subcategory,
-        "leftovers": leftovers,
-        "original": split_id,
-    }
+    if len(category) > 3 and category[-2] == "@":
+        category = category[:-2]
+    
+    if len(subcategory) > 3 and subcategory[-2] == "@":
+        subcategory = subcategory[:-2]
+
+    return _item(tier, enchantment, category, subcategory, leftovers, split_id)
 
 def get_shop_category(shop_categories, split_id):
     return ""
@@ -85,5 +94,23 @@ for item in i18n_json_dict:
     if is_tiered(split_id):
         inferred_category = get_shop_category(shop_categories, split_id)
         items.append(new_item(split_id))
+
+# validation
+temp_filename = 'items_temp.csv'
+write_csv(temp_filename, items)
+with open(temp_filename, 'r', encoding='utf-8') as temp_csv:
+    reader = csv.DictReader(temp_csv)
+    for row in reader:
+        expected_item = new_item(eval(row['split_id']))
+        actual_item = _item(
+            tier=row['tier'],
+            enchantment=row['enchantment'],
+            category=row['category'],
+            subcategory=row['subcategory'],
+            leftovers=eval(row['leftovers']),
+            split_id=eval(row['split_id']),
+        )
+        if json.dumps(actual_item, sort_keys=True) != json.dumps(expected_item, sort_keys=True):
+            print("there is one difference", expected_item, actual_item)
 
 write_csv('items.csv', items)
