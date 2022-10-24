@@ -13,8 +13,10 @@ import (
 )
 
 // TODO: these const should come from CLI flags
-const MAX_RECORDS = 2
-const WRITE_BUFFER = 500
+const MAX_RECORDS = 2   // 7095
+const READ_BUFFER = 10  // 5000
+const WRITE_BUFFER = 10 // 300
+const AO2D_TIME_BETWEEN_REQUESTS = 500 * time.Millisecond
 const recipesCSV = "recipes.csv"
 const itemsCSV = "items.csv"
 
@@ -81,7 +83,7 @@ func Scrape(filename string) chan ScrapedItem {
 		for itemID := range itemIDsChan {
 			ids += 1
 			log.Printf("fetching recipe for %s (%d/%d)", itemID, ids, MAX_RECORDS)
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(AO2D_TIME_BETWEEN_REQUESTS)
 
 			const baseURL = "https://www.albiononline2d.com/en/craftcalculator/api/"
 
@@ -89,11 +91,15 @@ func Scrape(filename string) chan ScrapedItem {
 			if err != nil {
 				log.Printf("Error fetching: %v", err)
 			}
-			defer resp.Body.Close()
 
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				log.Printf("Error reading response body: %v", err)
+				log.Printf("(%s) Error reading response body: %v", itemID, err)
+			}
+
+			err = resp.Body.Close()
+			if err != nil {
+				log.Printf("(%s) Error closing response body: %v", itemID, err)
 			}
 
 			// mock
@@ -111,8 +117,8 @@ func Scrape(filename string) chan ScrapedItem {
 		close(outputChan)
 	}
 
-	itemIDsChan := make(chan string, 10)
-	outputChan := make(chan ScrapedItem, 4)
+	itemIDsChan := make(chan string, READ_BUFFER)
+	outputChan := make(chan ScrapedItem, WRITE_BUFFER)
 
 	go readFile(filename, itemIDsChan)
 	go fetch(itemIDsChan, outputChan)
@@ -144,7 +150,12 @@ func writeToFile(filename string, items chan ScrapedItem) {
 
 	count := 0
 	for item := range items {
-		log.Printf("got %d characters for item ID %s", len(item.ScrapeResult), item.ItemID)
+		warnString := " "
+		if len(item.ScrapeResult) == 0 {
+			warnString = " (empty) "
+		}
+
+		log.Printf("got %d%scharacters for item ID %s", len(item.ScrapeResult), warnString, item.ItemID)
 		w.Write(item.ToCSV())
 		count += 1
 		if count > WRITE_BUFFER {
