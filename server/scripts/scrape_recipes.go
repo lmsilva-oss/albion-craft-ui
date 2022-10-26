@@ -13,10 +13,15 @@ import (
 )
 
 // TODO: these const should come from CLI flags
-const MAX_RECORDS = 2   // 7095
-const READ_BUFFER = 10  // 5000
-const WRITE_BUFFER = 10 // 300
-const AO2D_TIME_BETWEEN_REQUESTS = 500 * time.Millisecond
+const MAX_RECORDS = 7095
+const READ_BUFFER = 5000
+const WRITE_BUFFER = 300
+
+const AO2D_TIME_BETWEEN_REQUESTS = 50 * time.Millisecond
+const HTTP_FETCHERS = 2
+const HTTP_TIMEOUT = 2 * time.Second
+const baseURL = "https://www.albiononline2d.com/en/craftcalculator/api/"
+
 const recipesCSV = "recipes.csv"
 const itemsCSV = "items.csv"
 
@@ -78,32 +83,38 @@ func Scrape(filename string) chan ScrapedItem {
 		close(itemIDsChan)
 	}
 
-	fetch := func(itemIDsChan chan string, outputChan chan ScrapedItem) {
-		ids := 0
-		for itemID := range itemIDsChan {
-			ids += 1
-			log.Printf("fetching recipe for %s (%d/%d)", itemID, ids, MAX_RECORDS)
+	ids := 0
+	client := http.Client{
+		Timeout: HTTP_TIMEOUT,
+	}
+
+	fetch := func(workerID int, itemIDChan chan string, outputChan chan ScrapedItem, doneChan chan bool) {
+		for itemID := range itemIDChan {
+			if strings.Contains(itemID, "LABOURER_CONTRACT") {
+				log.Printf("skipping %s (LABOURER_CONTRACT)", itemID)
+				continue
+			}
+
+			log.Printf("(worker #%d) fetching recipe for %s (%d/%d)", workerID, itemID, ids, MAX_RECORDS)
 			time.Sleep(AO2D_TIME_BETWEEN_REQUESTS)
 
-			const baseURL = "https://www.albiononline2d.com/en/craftcalculator/api/"
-
-			resp, err := http.Get(baseURL + itemID)
+			resp, err := client.Get(baseURL + itemID)
 			if err != nil {
 				log.Printf("Error fetching: %v", err)
+				continue
 			}
 
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				log.Printf("(%s) Error reading response body: %v", itemID, err)
+				continue
 			}
 
 			err = resp.Body.Close()
 			if err != nil {
 				log.Printf("(%s) Error closing response body: %v", itemID, err)
+				continue
 			}
-
-			// mock
-			// body := []byte("{\n    \"_id\": \"62d830330b1d9b001a9098ad\",\n    \"_attr\": {\n        \"uniquename\": \"T7_POTION_STONESKIN@1\",\n        \"uisprite\": \"POTION_TURQUOISE\",\n        \"abilitypower\": \"186\",\n        \"slottype\": \"potion\",\n        \"consumespell\": \"POTION_RESISTANCE_3_LEVEL1\",\n        \"shopcategory\": \"consumables\",\n        \"shopsubcategory1\": \"potion\",\n        \"craftingcategory\": \"potion\",\n        \"tier\": \"7\",\n        \"dummyitempower\": \"1100\",\n        \"maxstacksize\": \"999\",\n        \"unlockedtocraft\": \"false\",\n        \"unlockedtoequip\": \"true\",\n        \"uicraftsoundstart\": \"Play_ui_action_craft_potion_start\",\n        \"uicraftsoundfinish\": \"Play_ui_action_craft_potion_finish\",\n        \"weight\": \"1.44\",\n        \"enchantmentlevel\": \"1\"\n    },\n    \"craftingrequirements\": [\n        {\n            \"_attr\": {\n                \"silver\": \"0\",\n                \"amountcrafted\": \"5\",\n                \"forcesinglecraft\": \"false\",\n                \"craftingfocus\": \"1272\",\n                \"time\": \"2.9065\"\n            },\n            \"craftresource\": [\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T7_MULLEIN\",\n                        \"count\": \"72\"\n                    }\n                },\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T6_FOXGLOVE\",\n                        \"count\": \"36\"\n                    }\n                },\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T4_BURDOCK\",\n                        \"count\": \"36\"\n                    }\n                },\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T6_MILK\",\n                        \"count\": \"18\"\n                    }\n                },\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T7_ALCOHOL\",\n                        \"count\": \"18\"\n                    }\n                },\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T7_ESSENCE_POTION\",\n                        \"count\": \"3\"\n                    }\n                }\n            ]\n        }\n    ],\n    \"enchantments\": [\n        {\n            \"enchantment\": [\n                {\n                    \"_attr\": {\n                        \"enchantmentlevel\": \"1\",\n                        \"abilitypower\": \"186\",\n                        \"dummyitempower\": \"1100\",\n                        \"consumespell\": \"POTION_RESISTANCE_3_LEVEL1\"\n                    },\n                    \"craftingrequirements\": [\n                        {\n                            \"_attr\": {\n                                \"amountcrafted\": \"5\",\n                                \"craftingfocus\": \"1272\",\n                                \"time\": \"2.9065\"\n                            },\n                            \"craftresource\": [\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T7_MULLEIN\",\n                                        \"count\": \"72\"\n                                    }\n                                },\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T6_FOXGLOVE\",\n                                        \"count\": \"36\"\n                                    }\n                                },\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T4_BURDOCK\",\n                                        \"count\": \"36\"\n                                    }\n                                },\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T6_MILK\",\n                                        \"count\": \"18\"\n                                    }\n                                },\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T7_ALCOHOL\",\n                                        \"count\": \"18\"\n                                    }\n                                },\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T7_ESSENCE_POTION\",\n                                        \"count\": \"3\"\n                                    }\n                                }\n                            ]\n                        }\n                    ],\n                    \"upgraderequirements\": [\n                        {\n                            \"upgraderesource\": [\n                                {\n                                    \"_attr\": {\n                                        \"uniquename\": \"T7_ESSENCE_POTION\",\n                                        \"count\": \"3\"\n                                    }\n                                }\n                            ]\n                        }\n                    ]\n                }\n            ]\n        }\n    ],\n    \"_titles\": {\n        \"en\": \"Major Resistance Potion\",\n        \"de\": \"Großer Resistenztrank\",\n        \"fr\": \"Potion de résistance majeure\",\n        \"ru\": \"Большой эликсир защиты\",\n        \"pl\": \"Większa Mikstura Odporności\",\n        \"es\": \"Poción de resistencia mayor\",\n        \"pt\": \"Poção de Resistência Maior\"\n    },\n    \"type\": \"consumableitem\",\n    \"_calculatedEnchantmentLevel\": \"1\",\n    \"upgraderequirements\": [\n        {\n            \"upgraderesource\": [\n                {\n                    \"_attr\": {\n                        \"uniquename\": \"T7_ESSENCE_POTION\",\n                        \"count\": \"3\"\n                    }\n                }\n            ]\n        }\n    ],\n    \"__v\": 0,\n    \"_calculatedCraftFame\": 3630,\n    \"_calculatedItemValue\": 7200,\n    \"_marketplaceTitle\": \"T7_POTION_STONESKIN@1\",\n    \"title\": \"Major Resistance Potion\",\n    \"detailsHref\": \"/en/item/id/T7_POTION_STONESKIN@1\"\n}")
 
 			result := string(body)
 
@@ -114,6 +125,26 @@ func Scrape(filename string) chan ScrapedItem {
 
 			outputChan <- output
 		}
+		doneChan <- true
+	}
+
+	batchFetch := func(itemIDsChan chan string, outputChan chan ScrapedItem) {
+		inputChan := make(chan string, HTTP_FETCHERS)
+		doneChan := make(chan bool)
+
+		for i := 0; i < HTTP_FETCHERS; i++ {
+			go fetch(i, inputChan, outputChan, doneChan)
+		}
+
+		for itemID := range itemIDsChan {
+			ids += 1
+			inputChan <- itemID
+		}
+		close(inputChan)
+
+		for i := 0; i < HTTP_FETCHERS; i++ {
+			<-doneChan
+		}
 		close(outputChan)
 	}
 
@@ -121,7 +152,7 @@ func Scrape(filename string) chan ScrapedItem {
 	outputChan := make(chan ScrapedItem, WRITE_BUFFER)
 
 	go readFile(filename, itemIDsChan)
-	go fetch(itemIDsChan, outputChan)
+	go batchFetch(itemIDsChan, outputChan)
 
 	return outputChan
 }
